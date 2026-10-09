@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowSmith: build automations with LLMs, RAG and agents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F2F4F1; --panel:#FFFFFF; --ink:#172033; --muted:#566178; --line:#D3D9D0;
+  --accent:#2A5CFF; --accent-soft:#E4EBFF; --tool:#C77700; --tool-soft:#FFF1D6;
+  --ok:#1E8E5A; --ok-soft:#DDF3E8; --bad:#B8342F; --bad-soft:#FBE3E1;
+  --sans:'Bricolage Grotesque',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.55 var(--sans)}
+h1,h2,h3{margin:0;line-height:1.15}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+header.top{padding:28px clamp(16px,4vw,48px) 8px;display:flex;flex-wrap:wrap;gap:12px 32px;align-items:flex-end;justify-content:space-between}
+header.top h1{font-size:clamp(2rem,5vw,3.4rem);font-weight:800;letter-spacing:-.02em}
+header.top p{margin:6px 0 0;max-width:56ch;color:var(--muted)}
+.keybox{display:flex;gap:8px;align-items:center;font-size:.85rem;color:var(--muted)}
+.keybox input{width:230px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+main{display:grid;grid-template-columns:minmax(260px,330px) minmax(280px,1fr) minmax(280px,400px);gap:20px;padding:16px clamp(16px,4vw,48px) 24px;align-items:start}
+@media(max-width:1080px){main{grid-template-columns:1fr 1fr}.col-detail{grid-column:1/-1}}
+@media(max-width:700px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card+.card{margin-top:16px}
+.card h2{font-size:1.1rem;margin-bottom:10px}
+label.f{display:block;font-size:.85rem;font-weight:600;margin:12px 0 4px}
+textarea,input[type=text],select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;background:#fff}
+textarea{resize:vertical;min-height:90px}
+.btn{border:0;border-radius:6px;padding:10px 16px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff}
+.btn:hover{background:#1E49D6}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn.alt{background:var(--panel);color:var(--ink);border:1px solid var(--line)}
+.btn.alt:hover{background:var(--paper)}
+.btn.sm{padding:5px 10px;font-size:.8rem}
+.btn.ok{background:var(--ok)}.btn.bad{background:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{border:1px solid var(--line);background:var(--paper);border-radius:99px;padding:4px 11px;font-size:.8rem;cursor:pointer}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.docs{list-style:none;margin:8px 0;padding:0;font-size:.88rem}
+.docs li{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.docs small{color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.check{display:flex;gap:8px;align-items:center;font-size:.9rem;margin-top:12px}
+
+/* pipeline rail */
+.rail{list-style:none;margin:0;padding:0;position:relative}
+.rail::before{content:"";position:absolute;left:21px;top:22px;bottom:22px;width:2px;background:var(--line)}
+.rail li{position:relative;margin:0 0 10px}
+.node{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px 10px 0;cursor:pointer}
+.node:hover{border-color:var(--accent)}
+.node .dot{justify-self:center;width:28px;height:28px;border-radius:50%;background:var(--paper);border:2px solid var(--line);display:grid;place-items:center;font:600 .78rem var(--mono);z-index:1}
+.node b{display:block;font-size:1rem}
+.node span.s{font-size:.82rem;color:var(--muted)}
+.node .tag{font-size:.75rem;color:var(--muted)}
+.node.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.node.active .dot{border-color:var(--accent);background:var(--accent);color:#fff;animation:pulse 1.1s ease-in-out infinite}
+.node.done .dot{border-color:var(--ok);background:var(--ok);color:#fff}
+@keyframes pulse{50%{box-shadow:0 0 0 7px var(--accent-soft)}}
+@media(prefers-reduced-motion:reduce){.node.active .dot{animation:none}html{scroll-behavior:auto}}
+
+.detail h2{font-size:1.25rem}
+.detail .what{background:var(--accent-soft);border-radius:8px;padding:10px 12px;font-size:.9rem;margin:10px 0}
+.detail p{margin:8px 0;font-size:.93rem}
+.plan-list{margin:8px 0;padding-left:18px;font-size:.9rem}
+.badge{display:inline-block;border-radius:5px;padding:1px 8px;font:600 .75rem var(--mono);background:var(--tool-soft);color:var(--tool)}
+.badge.ag{background:var(--accent-soft);color:var(--accent)}
+.mem-item{font-size:.85rem;border-left:3px solid var(--accent);padding:2px 8px;margin:6px 0;background:var(--paper)}
+
+/* run area */
+.wide{padding:0 clamp(16px,4vw,48px) 24px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:900px){.wide{grid-template-columns:1fr}}
+.log{font:400 .8rem/1.5 var(--mono);max-height:340px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px}
+.log div{padding:2px 0;border-bottom:1px dashed var(--line)}
+.log .k-tool{color:var(--tool)}.log .k-ok{color:var(--ok)}.log .k-bad{color:var(--bad)}.log .k-ag{color:var(--accent)}
+.log .st{font-weight:600;margin-right:6px}
+.out{white-space:pre-wrap;font:400 .85rem/1.55 var(--mono);background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;min-height:120px;max-height:340px;overflow:auto}
+.approve{background:var(--tool-soft);border:1px solid var(--tool);border-radius:8px;padding:12px;margin:10px 0}
+.empty{color:var(--muted);font-size:.9rem}
+
+/* learn lab */
+.lab{padding:8px clamp(16px,4vw,48px) 56px}
+.lab h2{font-size:1.8rem;margin-bottom:6px}
+.lab>p{color:var(--muted);max-width:62ch;margin:0 0 16px}
+.lab-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:900px){.lab-grid{grid-template-columns:1fr}}
+details{border-bottom:1px solid var(--line);padding:10px 0}
+summary{cursor:pointer;font-weight:600}
+details p{margin:8px 0 0;font-size:.92rem;color:var(--muted)}
+.tok{display:inline-block;margin:2px;padding:1px 6px;border-radius:4px;background:var(--accent-soft);font:400 .82rem var(--mono)}
+.status{font-size:.82rem;color:var(--muted);min-height:1.2em;margin-top:6px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>FlowSmith</h1>
+    <p>Describe a task in plain English. FlowSmith plans it, pulls facts from your documents, hands work between agents, calls tools, and shows every step so you can see how it works.</p>
+  </div>
+  <div class="keybox">
+    <label for="apikey">Claude API key (optional)</label>
+    <input id="apikey" type="password" placeholder="sk-ant-... (kept in this tab only)" autocomplete="off">
+  </div>
+</header>
+
+<main>
+  <section class="col-input" aria-label="Task and documents">
+    <div class="card">
+      <h2>1. Describe the automation</h2>
+      <label class="f" for="task">What should it do?</label>
+      <textarea id="task" placeholder="Every morning, read new support requests, find our refund policy, and draft a reply."></textarea>
+      <div class="chips" id="examples"></div>
+      <label class="f" for="trigger">Starts when</label>
+      <select id="trigger">
+        <option value="auto">Detect from my description</option>
+        <option value="manual">I press Run</option>
+        <option value="schedule">On a schedule (simulated)</option>
+        <option value="new_doc">A new document arrives (simulated)</option>
+      </select>
+      <label class="f" for="format">Result format</label>
+      <select id="format">
+        <option value="auto">Detect from my description</option>
+        <option value="summary">Summary with sources</option>
+        <option value="checklist">Checklist</option>
+        <option value="json">JSON</option>
+      </select>
+      <label class="check"><input type="checkbox" id="approval" checked> Ask me to approve before actions run</label>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="runBtn" onclick="run()">Run automation</button>
+        <button class="btn alt" onclick="resetRun()">Clear run</button>
+      </div>
+      <div class="status" id="status" aria-live="polite"></div>
+    </div>
+
+    <div class="card">
+      <h2>2. Your documents</h2>
+      <p class="empty" style="margin:0 0 8px">Documents are split into chunks and turned into vectors in your browser. Nothing is uploaded anywhere.</p>
+      <ul class="docs" id="docList"></ul>
+      <label class="f" for="docName">Add a document</label>
+      <input type="text" id="docName" placeholder="Name, e.g. Shipping policy">
+      <textarea id="docText" placeholder="Paste text here" style="margin-top:6px"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn alt sm" onclick="addPasted()">Add text</button>
+        <label class="btn alt sm" style="cursor:pointer">Upload .txt or .md<input type="file" id="fileIn" accept=".txt,.md,text/plain" hidden multiple></label>
+      </div>
+    </div>
+  </section>
+
+  <section class="col-rail" aria-label="Pipeline">
+    <div class="card">
+      <h2>The pipeline</h2>
+      <p class="empty" style="margin:0 0 12px">Select a stage to see what it does and change its settings.</p>
+      <ol class="rail" id="rail"></ol>
+    </div>
+  </section>
+
+  <section class="col-detail" aria-label="Stage details">
+    <div class="card detail" id="detail"></div>
+    <div class="card">
+      <h2>Long-term memory</h2>
+      <div id="memList"></div>
+      <button class="btn alt sm" onclick="clearMem()" style="margin-top:8px">Forget everything</button>
+    </div>
+  </section>
+</main>
+
+<div class="wide">
+  <section class="card">
+    <h2>Run log</h2>
+    <div class="log" id="log" aria-live="polite"><span class="empty">Nothing has run yet. Describe a task and press Run automation.</span></div>
+    <div id="approveBox"></div>
+  </section>
+  <section class="card">
+    <div class="row" style="justify-content:space-between"><h2>Result</h2><button class="btn alt sm" onclick="copyOut()">Copy</button></div>
+    <div class="out" id="out"><span class="empty">The finished result appears here.</span></div>
+  </section>
+</div>
+
+<section class="lab" id="lab">
+  <h2>Learn lab</h2>
+  <p>Each stage above uses one idea. Open a topic, then try the two live demos on the right.</p>
+  <div class="lab-grid">
+    <div class="card" id="topics"></div>
+    <div>
+      <div class="card">
+        <h2>Tokens: what the model actually reads</h2>
+        <input type="text" id="tokIn" value="Transformers read unbelievably long sentences as tokens.">
+        <div id="tokOut" style="margin-top:10px"></div>
+        <div class="status" id="tokCount"></div>
+      </div>
+      <div class="card">
+        <h2>Embeddings: meaning as distance</h2>
+        <input type="text" id="simA" value="How do I get my money back?">
+        <input type="text" id="simB" value="Refund policy for returned items" style="margin-top:6px">
+        <div style="margin-top:10px;font-weight:600" id="simOut"></div>
+        <div class="status">This demo uses a simple word-hashing embedding so it runs offline. Real systems use a neural embedding model, which also matches synonyms like "money back" and "refund".</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+
+/* ---------- content ---------- */
+const STAGES=[
+ {id:'understand',name:'Understand',sub:'The LLM reads your request',topic:'llm'},
+ {id:'prompt',name:'Instruct',sub:'Prompt and output format',topic:'prompt'},
+ {id:'retrieve',name:'Retrieve',sub:'Embeddings and vector search',topic:'rag'},
+ {id:'memory',name:'Remember',sub:'Recall past runs',topic:'memory'},
+ {id:'agents',name:'Collaborate',sub:'Agents hand work to each other',topic:'multi'},
+ {id:'tools',name:'Act',sub:'Tool calling',topic:'tools'},
+ {id:'run',name:'Run',sub:'Triggers, approval, retries',topic:'auto'}
+];
+const TOPICS=[
+ {k:'llm',t:'How LLMs work',b:'A large language model predicts the next token, one token at a time, based on everything before it. It was trained on huge amounts of text to get good at that single task. Instructions, answers and even tool requests are all just generated text.'},
+ {k:'prompt',t:'Prompt engineering',b:'The prompt is the model\'s whole job description. A good one states the role, the task, the rules, the output format, and one or two examples. Small wording changes can change results a lot, so keep versions and compare them.'},
+ {k:'transformers',t:'Transformers',b:'The transformer is the neural network design behind modern LLMs. Its key idea is attention: every token looks at every other token and decides which ones matter for the next prediction. That is how "it" in a sentence gets linked to the right noun.'},
+ {k:'emb',t:'Embeddings',b:'An embedding turns text into a list of numbers so that similar meanings sit close together. "Refund" and "money back" end up near each other even though they share no words.'},
+ {k:'vdb',t:'Vector databases',b:'A vector database stores embeddings and finds the nearest ones to a query very quickly, even with millions of chunks. Examples: Chroma, pgvector, Pinecone, Qdrant. Here the "database" is a plain array searched by cosine similarity.'},
+ {k:'rag',t:'Retrieval pipelines (RAG)',b:'Retrieval-augmented generation fetches relevant chunks first, then gives them to the LLM with the question. This grounds answers in your documents and lets you cite sources. Typical steps: chunk, embed, search, rerank, answer.'},
+ {k:'tools',t:'Tool calling',b:'The LLM can answer with a structured request such as send_email(to, body) instead of plain text. Your code runs the tool and returns the result to the model. Always validate tool inputs and log every call.'},
+ {k:'memory',t:'Memory',b:'Short-term memory is the context of the current run. Long-term memory is saved between runs, usually as embeddings you can search. FlowSmith saves a short note after each run and recalls the closest one next time.'},
+ {k:'multi',t:'Multi-agent systems',b:'Several agents each get one narrow role and prompt, such as planner, researcher, writer and reviewer. Splitting the work makes each step easier to test, and a reviewer agent catches mistakes before anything is sent.'},
+ {k:'auto',t:'Autonomous workflows',b:'An autonomous workflow starts on its own (schedule, webhook, new file), retries failed steps, and pauses for a human on risky actions. The more power an agent has, the more important approvals, limits and logs become.'}
+];
+const EXAMPLES=[
+ 'Every morning, read new support requests, find our refund policy, and draft a reply.',
+ 'When a new document arrives, summarize it as a checklist and notify the team on Slack.',
+ 'Research our shipping rules and create a task for anything that needs follow-up. Return JSON.'
+];
+const SAMPLE_DOCS=[
+ {name:'Refund and returns policy',text:'Customers can request a full refund within 30 days of delivery if the item is unused and in its original packaging. Refunds are sent to the original payment method within 5 to 7 business days after the returned item is inspected.\n\nDigital products are refundable within 7 days only if they have not been downloaded. Gift purchases are refunded as store credit unless the buyer requests otherwise in writing.\n\nDamaged or wrong items are always refunded in full, including return shipping. Ask the customer for a photo and the order number before approving.'},
+ {name:'Shipping rules',text:'Standard shipping takes 3 to 6 business days. Express shipping takes 1 to 2 business days and must be ordered before 2 pm local time.\n\nOrders over 75 dollars ship free within the country. International orders can take 10 to 21 days and customers pay import duties.\n\nIf a parcel has not arrived after 10 business days, open a tracking case with the carrier and create a follow-up task for the support team.'},
+ {name:'Support handbook',text:'Reply to every support request within 24 hours. Start with the customer\'s name, restate the problem in one sentence, give the answer, and end with the next step.\n\nEscalate to a manager when a customer mentions legal action, a refund above 500 dollars, or a safety issue. Never promise a delivery date that the carrier has not confirmed.'}
+];
+
+/* ---------- state ---------- */
+const S={docs:[],chunks:[],sel:0,active:-1,done:new Set(),running:false,log:[],out:'',pending:null,
+  prompt:{system:'You are a careful operations assistant. Use only the provided sources and past notes. Cite sources as [1], [2]. If the sources do not contain the answer, say so.',example:'Q: Can I return a used item?\nA: Used items are not eligible for a refund [1].'},
+  topK:3,plan:null};
+let MEM=[];
+try{MEM=JSON.parse(localStorage.getItem('flowsmith-memory')||'[]')}catch(e){MEM=[]}
+const saveMem=()=>{try{localStorage.setItem('flowsmith-memory',JSON.stringify(MEM))}catch(e){}};
+
+/* ---------- tiny embedding + vector search ---------- */
+const STOP=new Set('the and for with are was this that from your you our can will not have has any all but its into than then them they their there what when which who how why about after before over under also just only more most some such been being were does did get got use used out off per via'.split(' '));
+const DIM=256;
+function words(s){return (s.toLowerCase().match(/[a-z0-9]+/g)||[]).filter(w=>w.length>2&&!STOP.has(w)).map(w=>w.length>4?w.replace(/(ing|ed|es|s)$/,''):w)}
+function hash(s){let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return h>>>0}
+function embed(text){
+  const v=new Float32Array(DIM),w=words(text);
+  const add=(k,x)=>{const h=hash(k);v[h%DIM]+=(h&1024?1:-1)*x};
+  w.forEach((t,i)=>{add(t,1);if(i)add(w[i-1]+'_'+t,.5)});
+  let n=Math.sqrt(v.reduce((a,b)=>a+b*b,0))||1;
+  return v.map(x=>x/n);
+}
+function cos(a,b){let s=0;for(let i=0;i<DIM;i++)s+=a[i]*b[i];return s}
+function chunkText(t){
+  const out=[];
+  t.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean).forEach(p=>{
+    const w=p.split(/\s+/);
+    if(w.length<=60)out.push(p);
+    else for(let i=0;i<w.length;i+=50)out.push(w.slice(i,i+60).join(' '));
+  });
+  return out;
+}
+function search(q,k){
+  const qv=embed(q);
+  return S.chunks.map(c=>({...c,score:cos(qv,c.vec)})).sort((a,b)=>b.score-a.score).slice(0,k).filter(h=>h.score>0.05);
+}
+
+/* ---------- documents ---------- */
+function addDoc(name,text){
+  if(!text.trim())return;
+  const id=Date.now()+Math.random();
+  const parts=chunkText(text);
+  S.docs.push({id,name,n:parts.length});
+  parts.forEach(p=>S.chunks.push({doc:name,docId:id,text:p,vec:embed(p)}));
+  renderDocs();renderDetail();
+}
+function addPasted(){
+  const n=$('docName').value.trim()||'Pasted note',t=$('docText').value;
+  if(!t.trim()){status('Paste some text first.');return}
+  addDoc(n,t);$('docName').value='';$('docText').value='';status('Added "'+n+'".');
+}
+function removeDoc(id){S.docs=S.docs.filter(d=>d.id!==id);S.chunks=S.chunks.filter(c=>c.docId!==id);renderDocs();renderDetail()}
+function renderDocs(){
+  $('docList').innerHTML=S.docs.length?S.docs.map(d=>`<li><span>${esc(d.name)}<br><small>${d.n} chunk${d.n>1?'s':''}</small></span><button class="btn alt sm" onclick="removeDoc(${d.id})" aria-label="Remove ${esc(d.name)}">Remove</button></li>`).join(''):'<li class="empty">No documents yet. Retrieval will find nothing.</li>';
+}
+$('fileIn').addEventListener('change',e=>{
+  [...e.target.files].forEach(f=>{const r=new FileReader();r.onload=()=>addDoc(f.name,String(r.result));r.readAsText(f)});
+  e.target.value='';
+});
+
+/* ---------- planning ---------- */
+function makePlan(task){
+  const t=task.toLowerCase(),has=(...w)=>w.some(x=>t.includes(x));
+  const tools=[{name:'search_kb',why:'Look up facts in your documents'}];
+  if(has('email','mail','reply','inbox'))tools.push({name:'send_email',why:'Send the drafted reply'});
+  if(has('ticket','support','task','issue','follow-up','follow up'))tools.push({name:'create_task',why:'Log a follow-up task'});
+  if(has('slack','notify','alert','team'))tools.push({name:'notify_slack',why:'Post an update to the team'});
+  if(has('meeting','calendar','book'))tools.push({name:'create_event',why:'Book a calendar event'});
+  if(has('web','news','competitor','market'))tools.push({name:'web_search',why:'Search the web for fresh data'});
+  if(tools.length===1)tools.push({name:'create_task',why:'Log the result as a follow-up'});
+  let trigger=$('trigger').value;
+  if(trigger==='auto')trigger=has('every','daily','morning','weekly')?'schedule':has('new document','new file','upload','arrives')?'new_doc':'manual';
+  let format=$('format').value;
+  if(format==='auto')format=has('json','structured')?'json':has('checklist','steps','to-do')?'checklist':'summary';
+  return {task,tools,trigger,format};
+}
+const TRIGGER_TEXT={manual:'You pressed Run',schedule:'Schedule (simulated by this Run)',new_doc:'New document arrives (simulated by this Run)'};
+
+/* ---------- rendering ---------- */
+function status(m){$('status').textContent=m}
+function renderRail(){
+  $('rail').innerHTML=STAGES.map((s,i)=>{
+    const cls=['node',i===S.sel?'sel':'',S.active===i?'active':'',S.done.has(i)?'done':''].join(' ');
+    const tag=S.active===i?'Working':S.done.has(i)?'Done':'';
+    return `<li><button class="${cls}" onclick="selStage(${i})" aria-current="${i===S.sel}"><span class="dot">${S.done.has(i)?'✓':i+1}</span><span><b>${s.name}</b><span class="s">${s.sub}</span></span><span class="tag">${tag}</span></button></li>`;
+  }).join('');
+}
+function selStage(i){S.sel=i;renderRail();renderDetail()}
+function topicOf(k){return TOPICS.find(t=>t.k===k)}
+function renderDetail(){
+  const s=STAGES[S.sel],t=topicOf(s.topic),p=S.plan;
+  let body='';
+  if(s.id==='understand'){
+    body=p?`<p>For your request, the model decided:</p><ul class="plan-list"><li>Start: <b>${TRIGGER_TEXT[p.trigger]}</b></li><li>Result format: <b>${p.format}</b></li><li>Tools needed: ${p.tools.map(x=>`<span class="badge">${x.name}</span>`).join(' ')}</li></ul>`:'<p class="empty">Run an automation to see how your request was interpreted.</p>';
+    body+='<p class="empty">This demo uses simple keyword rules to read your request. With a Claude API key the writer step uses a real LLM.</p>';
+  }else if(s.id==='prompt'){
+    body=`<label class="f" for="sys">System prompt</label><textarea id="sys" oninput="S.prompt.system=this.value">${esc(S.prompt.system)}</textarea>
+    <label class="f" for="ex">Example (few-shot)</label><textarea id="ex" oninput="S.prompt.example=this.value" style="min-height:70px">${esc(S.prompt.example)}</textarea>
+    <p class="empty">The result format is chosen on the left. Edit these, run again, and compare.</p>`;
+  }else if(s.id==='retrieve'){
+    body=`<label class="f" for="topk">Chunks to retrieve: <b id="topkv">${S.topK}</b></label><input type="range" id="topk" min="1" max="6" value="${S.topK}" oninput="S.topK=+this.value;$('topkv').textContent=this.value">
+    <p>${S.chunks.length} chunk${S.chunks.length===1?'':'s'} from ${S.docs.length} document${S.docs.length===1?'':'s'} are indexed.</p>`;
+  }else if(s.id==='memory'){
+    body=`<p>${MEM.length} saved note${MEM.length===1?'':'s'}. The closest one to your request is recalled at the start of each run.</p>`;
+  }else if(s.id==='agents'){
+    body=`<ul class="plan-list"><li><span class="badge ag">Planner</span> breaks the task into steps</li><li><span class="badge ag">Researcher</span> reads the retrieved chunks and notes</li><li><span class="badge ag">Writer</span> drafts the result in your format</li><li><span class="badge ag">Reviewer</span> checks the draft has sources and flags gaps</li></ul>`;
+  }else if(s.id==='tools'){
+    body=p?`<p>Planned tool calls:</p><ul class="plan-list">${p.tools.map(x=>`<li><span class="badge">${x.name}</span> ${x.why}</li>`).join('')}</ul>`:'<p class="empty">Tools are chosen from your description when you run.</p>';
+    body+='<p class="empty">All tools except search_kb are simulated, so nothing is really sent.</p>';
+  }else{
+    body=`<p>The run starts from a trigger, retries failed tool calls up to 3 times, and can pause for your approval before any action runs. Turn approval on or off on the left.</p><p class="empty">Scheduled and new-document triggers are simulated here. A real deployment needs a backend (see readme.md).</p>`;
+  }
+  $('detail').innerHTML=`<h2>${s.name}</h2><div class="what"><b>${t.t}.</b> ${t.b}</div>${body}`;
+}
+function renderMem(){
+  $('memList').innerHTML=MEM.length?MEM.slice(-5).reverse().map(m=>`<div class="mem-item">${esc(m.task.slice(0,90))}<br><small>${esc(m.summary)}</small></div>`).join(''):'<p class="empty">Empty. A short note is saved after each run.</p>';
+}
+function clearMem(){MEM=[];saveMem();renderMem();renderDetail()}
+function addLog(stage,msg,kind){
+  S.log.push({stage,msg,kind});
+  const el=$('log');if(S.log.length===1)el.innerHTML='';
+  const d=document.createElement('div');d.className=kind?'k-'+kind:'';
+  d.innerHTML=`<span class="st">[${esc(stage)}]</span>${esc(msg)}`;
+  el.appendChild(d);el.scrollTop=el.scrollHeight;
+}
+function setOut(t){S.out=t;$('out').textContent=t}
+function copyOut(){if(!S.out)return;(navigator.clipboard?navigator.clipboard.writeText(S.out):Promise.reject()).then(()=>status('Copied.'),()=>status('Select the text and copy it manually.'))}
+function resetRun(){
+  if(S.running)return;
+  S.active=-1;S.done=new Set();S.log=[];S.out='';S.plan=null;
+  $('log').innerHTML='<span class="empty">Nothing has run yet. Describe a task and press Run automation.</span>';
+  $('out').innerHTML='<span class="empty">The finished result appears here.</span>';
+  $('approveBox').innerHTML='';status('');renderRail();renderDetail();
+}
+
+/* ---------- run engine ---------- */
+async function stage(i,fn){S.active=i;S.sel=i;renderRail();renderDetail();await delay(550);await fn();S.done.add(i);S.active=-1;renderRail()}
+function approvalGate(plan){
+  return new Promise(res=>{
+    $('approveBox').innerHTML=`<div class="approve"><b>Approval needed.</b> These actions are about to run: ${plan.tools.filter(t=>t.name!=='search_kb').map(t=>`<span class="badge">${t.name}</span>`).join(' ')||'none'}<div class="row" style="margin-top:10px"><button class="btn ok sm" id="yes">Approve</button><button class="btn bad sm" id="no">Reject</button></div></div>`;
+    $('yes').onclick=()=>{$('approveBox').innerHTML='';res(true)};
+    $('no').onclick=()=>{$('approveBox').innerHTML='';res(false)};
+    $('yes').focus();
+  });
+}
+function simulateTool(name,plan,hits){
+  switch(name){
+    case 'search_kb':return hits.length+' chunk(s) returned';
+    case 'send_email':return 'Draft saved to outbox (simulated, nothing was sent)';
+    case 'create_task':return 'Task created: "Follow up: '+plan.task.slice(0,40)+'" (simulated)';
+    case 'notify_slack':return 'Message posted to #team (simulated)';
+    case 'create_event':return 'Calendar event created for tomorrow 10:00 (simulated)';
+    case 'web_search':return '3 web results fetched (simulated)';
+    default:return 'ok';
+  }
+}
+function offlineDraft(plan,hits,mem){
+  const first=h=>(h.text.split(/(?<=[.!?])\s/)[0]||h.text).slice(0,220);
+  const cites=hits.map((h,i)=>first(h)+' ['+(i+1)+']');
+  const acts=plan.tools.filter(t=>t.name!=='search_kb');
+  if(plan.format==='json')return JSON.stringify({task:plan.task,findings:hits.map((h,i)=>({ref:i+1,source:h.doc,score:+h.score.toFixed(2),excerpt:h.text.slice(0,160)})),actions:acts.map(t=>t.name),pastNote:mem?mem.summary:null},null,2);
+  if(plan.format==='checklist')return 'Checklist for: '+plan.task+'\n\n'+(cites.map(c=>'[ ] '+c).join('\n')||'[ ] No matching source found')+'\n'+acts.map(t=>'[ ] '+t.why).join('\n');
+  return 'Result for: '+plan.task+'\n\nWhat your documents say:\n'+(cites.map(c=>'- '+c).join('\n')||'- No relevant source found.')+'\n\nNext actions:\n'+acts.map(t=>'- '+t.why).join('\n')+(mem?'\n\nFrom a past run: '+mem.summary:'')+'\n\nSources:\n'+(hits.map((h,i)=>'['+(i+1)+'] '+h.doc).join('\n')||'none');
+}
+async function llmDraft(key,plan,hits,mem){
+  const ctx=hits.map((h,i)=>'['+(i+1)+'] ('+h.doc+') '+h.text).join('\n\n');
+  const fmt={summary:'a short summary with source citations like [1]',checklist:'a checklist, one item per line starting with "[ ]"',json:'valid JSON only, no commentary'}[plan.format];
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-5-5',max_tokens:800,system:S.prompt.system+'\n\nExample:\n'+S.prompt.example,messages:[{role:'user',content:'Task: '+plan.task+'\n\nSources:\n'+(ctx||'(none)')+(mem?'\n\nPast note: '+mem.summary:'')+'\n\nWrite '+fmt+'.'}]})});
+  if(!r.ok)throw new Error('API returned '+r.status);
+  const j=await r.json();return (j.content||[]).map(b=>b.text||'').join('').trim();
+}
+async function run(){
+  if(S.running)return;
+  const task=$('task').value.trim();
+  if(!task){status('Describe a task first, or pick an example.');$('task').focus();return}
+  S.running=true;$('runBtn').disabled=true;S.log=[];S.done=new Set();S.out='';setOut('');$('log').innerHTML='';
+  const plan=S.plan=makePlan(task);let hits=[],mem=null,draft='',review='',rejected=false;
+  const key=$('apikey').value.trim();
+  status('Running…');
+  try{
+    await stage(0,()=>{addLog('Understand','Trigger: '+TRIGGER_TEXT[plan.trigger]);addLog('Understand','Format: '+plan.format+'. Tools: '+plan.tools.map(t=>t.name).join(', '))});
+    await stage(1,()=>{const words=(S.prompt.system+S.prompt.example+task).split(/\s+/).length;addLog('Instruct','Prompt assembled: system rules + 1 example + task, about '+Math.round(words*1.3)+' tokens')});
+    await stage(2,()=>{
+      if(!S.chunks.length){addLog('Retrieve','No documents indexed. Add one on the left.','bad');return}
+      hits=search(task,S.topK);addLog('Retrieve','Embedded the request and compared it to '+S.chunks.length+' chunks');
+      hits.forEach((h,i)=>addLog('Retrieve','['+(i+1)+'] '+h.doc+', similarity '+h.score.toFixed(2)));
+      if(!hits.length)addLog('Retrieve','Nothing similar enough was found','bad');
+    });
+    await stage(3,()=>{
+      const qv=embed(task);const best=MEM.map(m=>({m,s:cos(qv,embed(m.task))})).sort((a,b)=>b.s-a.s)[0];
+      if(best&&best.s>0.2){mem=best.m;addLog('Remember','Recalled a past run (similarity '+best.s.toFixed(2)+'): '+mem.summary)}
+      else addLog('Remember','No similar past run. Short-term memory holds this run only.');
+    });
+    await stage(4,async()=>{
+      addLog('Planner','Steps: retrieve, draft, review, then '+(plan.tools.filter(t=>t.name!=='search_kb').map(t=>t.name).join(' and ')||'no actions'),'ag');await delay(350);
+      addLog('Researcher','Read '+hits.length+' chunk(s)'+(mem?' and 1 past note':''),'ag');await delay(350);
+      if(key){
+        try{addLog('Writer','Calling Claude to draft the result…','ag');draft=await llmDraft(key,plan,hits,mem);addLog('Writer','Draft received from Claude','ag')}
+        catch(e){addLog('Writer','Claude call failed ('+e.message+'). Using the offline writer instead.','bad');draft=offlineDraft(plan,hits,mem)}
+      }else{draft=offlineDraft(plan,hits,mem);addLog('Writer','Drafted with the built-in offline writer. Add an API key for a real LLM.','ag')}
+      await delay(350);
+      const cited=/\[\d\]/.test(draft)||plan.format==='json';
+      if(!hits.length)review='Low confidence: no sources were found.';
+      else if(!cited)review='Warning: the draft has no citations.';
+      else if(hits[0].score<0.12)review='Low confidence: the best source is only loosely related.';
+      else review='Passed: draft is grounded in retrieved sources.';
+      addLog('Reviewer',review,review.startsWith('Passed')?'ok':'bad');
+    });
+    setOut(draft);
+    await stage(5,async()=>{
+      if(plan.approval!==false&&$('approval').checked&&plan.tools.some(t=>t.name!=='search_kb')){
+        addLog('Approval','Waiting for you to approve the actions…','tool');
+        const ok=await approvalGate(plan);
+        if(!ok){rejected=true;addLog('Approval','Rejected. No actions were run.','bad');return}
+        addLog('Approval','Approved.','ok');
+      }
+      for(const t of plan.tools){
+        let done=false;
+        for(let a=1;a<=3&&!done;a++){
+          await delay(350);
+          if(t.name!=='search_kb'&&a===1&&Math.random()<0.25){addLog('Tool',t.name+' failed on attempt 1 (timeout). Retrying…','bad');continue}
+          addLog('Tool',t.name+'('+(a>1?'attempt '+a+') ':') ')+simulateTool(t.name,plan,hits),'tool');done=true;
+        }
+        if(!done)addLog('Tool',t.name+' gave up after 3 attempts','bad');
+      }
+    });
+    await stage(6,()=>{
+      const note=rejected?'Rejected by user':(review.startsWith('Passed')?'Completed with sources: ':'Completed with warnings: ')+(hits.map(h=>h.doc).join(', ')||'none');
+      MEM.push({task,summary:note,ts:Date.now()});MEM=MEM.slice(-30);saveMem();renderMem();
+      addLog('Run',rejected?'Finished without actions':'Finished. Saved a note to long-term memory.','ok');
+    });
+    status(rejected?'Finished. Actions were rejected.':'Finished.');
+  }catch(e){addLog('Run','Unexpected error: '+e.message,'bad');status('Something went wrong. See the log.')}
+  S.running=false;$('runBtn').disabled=false;renderRail();renderDetail();
+}
+
+/* ---------- learn lab ---------- */
+function renderTopics(){
+  $('topics').innerHTML='<h2>Topics</h2>'+TOPICS.map(t=>`<details><summary>${t.t}</summary><p>${t.b}</p></details>`).join('');
+}
+function tokDemo(){
+  const v=$('tokIn').value;const out=[];
+  (v.match(/[A-Za-z]+|\d+|[^\sA-Za-z\d]/g)||[]).forEach(w=>{
+    if(/^[A-Za-z]+$/.test(w)&&w.length>7){for(let i=0;i<w.length;i+=4)out.push(w.slice(i,i+4))}else out.push(w);
+  });
+  $('tokOut').innerHTML=out.map(t=>`<span class="tok">${esc(t)}</span>`).join('');
+  $('tokCount').textContent=out.length+' tokens (approximate: real tokenizers split words differently)';
+}
+function simDemo(){
+  const s=cos(embed($('simA').value),embed($('simB').value));
+  $('simOut').textContent='Similarity: '+Math.max(0,s).toFixed(2)+' (0 = unrelated, 1 = same)';
+}
+['tokIn'].forEach(i=>$(i).addEventListener('input',tokDemo));
+['simA','simB'].forEach(i=>$(i).addEventListener('input',simDemo));
+
+/* ---------- init ---------- */
+$('examples').innerHTML=EXAMPLES.map((e,i)=>`<button class="chip" onclick="$('task').value=EXAMPLES[${i}]">Example ${i+1}</button>`).join('');
+SAMPLE_DOCS.forEach(d=>addDoc(d.name,d.text));
+renderDocs();renderRail();renderDetail();renderMem();renderTopics();tokDemo();simDemo();
+</script>
+</body>
+</html>
